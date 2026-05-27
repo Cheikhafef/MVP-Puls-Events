@@ -6,10 +6,6 @@ Tests unitaires du pipeline RAG Puls-Events.
 Valide que les données collectées et indexées respectent les contraintes
 des étapes 2 (préprocessing Open Agenda) et 3 (indexation FAISS).
 
-Compétences testées :
-    - Qualité et conformité du dataset CSV (étape 2)
-    - Intégrité de la base vectorielle FAISS (étape 3)
-
 Usage :
     python -m pytest scripts/test_events.py -v
     python -m pytest scripts/test_events.py -v --tb=short
@@ -24,9 +20,9 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 
 
+# ──────────────────────────────────────────────────
 # CONFIGURATION
-
-
+# ──────────────────────────────────────────────────
 INDEX_PATH = "data/index/faiss_index"
 CSV_PATH   = "data/events_clean.csv"
 
@@ -36,20 +32,12 @@ COLONNES_ATTENDUES = [
 ]
 
 
-# FIXTURES pytest — chargement partagé
-
-
+# ──────────────────────────────────────────────────
+# FIXTURES pytest
+# ──────────────────────────────────────────────────
 @pytest.fixture(scope="session")
 def df():
-    """
-    Fixture pytest — charge le CSV des événements une seule fois pour toute la session.
-
-    Returns:
-        pd.DataFrame: Dataset nettoyé avec start_date converti en datetime UTC.
-
-    Raises:
-        FileNotFoundError: Si le fichier CSV est introuvable.
-    """
+    """Charge le CSV des événements une seule fois pour toute la session."""
     assert os.path.exists(CSV_PATH), (
         f"Fichier CSV introuvable : {CSV_PATH}\n"
         "Lancez d'abord : python scripts/fetch_events.py"
@@ -63,15 +51,7 @@ def df():
 
 @pytest.fixture(scope="session")
 def faiss_db():
-    """
-    Fixture pytest — charge l'index FAISS une seule fois pour toute la session.
-
-    Returns:
-        FAISS: Base vectorielle chargée avec le modèle d'embedding MiniLM-L6-v2.
-
-    Raises:
-        AssertionError: Si le dossier d'index est introuvable.
-    """
+    """Charge l'index FAISS une seule fois pour toute la session."""
     assert os.path.exists(INDEX_PATH), (
         f"Index FAISS introuvable : {INDEX_PATH}\n"
         "Lancez d'abord : python scripts/build_vector_db.py"
@@ -88,44 +68,23 @@ def faiss_db():
     )
 
 
-# TESTS UNITAIRES — ÉTAPE 2 : Dataset CSV
-
+# ──────────────────────────────────────────────────
+# TESTS — ÉTAPE 2 : Dataset CSV
+# ──────────────────────────────────────────────────
 def test_colonnes_presentes(df):
-    """
-    Vérifie que le CSV contient toutes les colonnes attendues.
-
-    Les colonnes requises sont définies dans COLONNES_ATTENDUES et correspondent
-    au schéma de sortie de fetch_events.py (étape 2 du pipeline).
-
-    Args:
-        df (pd.DataFrame): Fixture du dataset CSV.
-
-    Raises:
-        AssertionError: Si une ou plusieurs colonnes sont absentes.
-    """
+    """Vérifie que le CSV contient toutes les colonnes attendues."""
     manquantes = [col for col in COLONNES_ATTENDUES if col not in df.columns]
     assert not manquantes, (
-        f"Colonnes manquantes dans le CSV : {manquantes}\n"
+        f"Colonnes manquantes : {manquantes}\n"
         f"Colonnes présentes : {list(df.columns)}"
     )
 
 
 def test_pas_de_nan(df):
-    """
-    Vérifie qu'aucune valeur NaN n'est présente dans les colonnes critiques.
-
-    Les colonnes title, description et start_date sont indispensables
-    au bon fonctionnement du pipeline RAG. Leur absence invalide un événement.
-
-    Args:
-        df (pd.DataFrame): Fixture du dataset CSV.
-
-    Raises:
-        AssertionError: Si des valeurs NaN sont détectées.
-    """
+    """Vérifie qu'aucun NaN n'est présent dans les colonnes critiques."""
     nan_counts = df[["title", "description", "start_date"]].isna().sum()
     assert nan_counts.sum() == 0, (
-        f"Valeurs NaN détectées dans les colonnes critiques :\n{nan_counts.to_dict()}"
+        f"Valeurs NaN détectées :\n{nan_counts.to_dict()}"
     )
 
 
@@ -133,10 +92,9 @@ def test_dates_periode_valide(df):
     """
     Vérifie que tous les événements sont dans la fenêtre temporelle valide.
 
-    Contrainte projet (message de Jérémy) :
-        - Pas d'événements de plus d'un an (>= aujourd'hui - 365 jours)
-        - Pas d'événements futurs (<= aujourd'hui)
-        → Uniquement des événements passés des 12 derniers mois.
+    Consigne encadreur (mise à jour) :
+        Fenêtre : aujourd'hui - 12 mois → aujourd'hui + 12 mois
+        Les événements passés récents ET futurs proches sont autorisés.
 
     Args:
         df (pd.DataFrame): Fixture du dataset CSV.
@@ -146,34 +104,23 @@ def test_dates_periode_valide(df):
     """
     now_utc         = pd.Timestamp.now(tz="UTC")
     one_year_ago_ts = now_utc - pd.Timedelta(days=365)
+    one_year_fut_ts = now_utc + pd.Timedelta(days=365)
 
-    trop_vieux  = df[df["start_date"] < one_year_ago_ts]
-    dans_futur  = df[df["start_date"] > now_utc]
+    trop_vieux = df[df["start_date"] < one_year_ago_ts]
+    trop_futur = df[df["start_date"] > one_year_fut_ts]
 
     assert len(trop_vieux) == 0, (
         f"{len(trop_vieux)} événement(s) de plus d'un an détecté(s).\n"
         f"Exemple : {trop_vieux[['title','start_date']].head(3).to_string()}"
     )
-    assert len(dans_futur) == 0, (
-        f"{len(dans_futur)} événement(s) futur(s) détecté(s) — non autorisés.\n"
-        f"Exemple : {dans_futur[['title','start_date']].head(3).to_string()}"
+    assert len(trop_futur) == 0, (
+        f"{len(trop_futur)} événement(s) au-delà de +12 mois détecté(s).\n"
+        f"Exemple : {trop_futur[['title','start_date']].head(3).to_string()}"
     )
 
 
 def test_perimetre_paris(df):
-    """
-    Vérifie que tous les événements appartiennent au périmètre géographique Paris.
-
-    Filtre géographique strict (étape 2 — fetch_events.py) :
-        - Code postal commençant par '75' (Paris intra-muros), OU
-        - Champ city contenant 'paris' (insensible à la casse)
-
-    Args:
-        df (pd.DataFrame): Fixture du dataset CSV.
-
-    Raises:
-        AssertionError: Si des événements hors Paris sont détectés.
-    """
+    """Vérifie que tous les événements appartiennent au périmètre Paris."""
     cp_str     = df["postal_code"].astype(str)
     city_lower = df["city"].astype(str).str.lower()
 
@@ -188,72 +135,46 @@ def test_perimetre_paris(df):
 
 
 def test_pas_de_doublons(df):
-    """
-    Vérifie l'absence de doublons dans le dataset sur la clé (title, start_date).
-
-    Le script fetch_events.py applique un drop_duplicates sur cette clé.
-    Ce test valide que la déduplication a bien fonctionné.
-
-    Args:
-        df (pd.DataFrame): Fixture du dataset CSV.
-
-    Raises:
-        AssertionError: Si des doublons sont détectés.
-    """
+    """Vérifie l'absence de doublons sur la clé (title, start_date)."""
     doublons = df.duplicated(subset=["title", "start_date"]).sum()
     assert doublons == 0, (
         f"{doublons} doublon(s) détecté(s) sur la clé (title, start_date)."
     )
 
 
-# TESTS UNITAIRES — ÉTAPE 3 : Index FAISS
-
-
+# ──────────────────────────────────────────────────
+# TESTS — ÉTAPE 3 : Index FAISS
+# ──────────────────────────────────────────────────
 def test_index_faiss_non_vide(faiss_db):
-    """
-    Vérifie que l'index FAISS contient un nombre suffisant de vecteurs.
-
-    L'index doit contenir au minimum 100 vecteurs pour être exploitable
-    dans le pipeline RAG. En pratique, le POC en contient 1774.
-
-    Args:
-        faiss_db (FAISS): Fixture de la base vectorielle.
-
-    Raises:
-        AssertionError: Si l'index contient moins de 100 vecteurs.
-    """
+    """Vérifie que l'index FAISS contient au moins 100 vecteurs."""
     nb_vecteurs = faiss_db.index.ntotal
     assert nb_vecteurs >= 100, (
-        f"Index FAISS trop petit : {nb_vecteurs} vecteurs (minimum attendu : 100).\n"
+        f"Index FAISS trop petit : {nb_vecteurs} vecteurs (minimum : 100).\n"
         "Relancez : python scripts/build_vector_db.py"
     )
 
 
 def test_chunks_faiss_coherents(faiss_db):
     """
-    Vérifie la cohérence sémantique des chunks stockés dans l'index FAISS.
+    Vérifie la cohérence sémantique des chunks dans l'index FAISS.
+
+    Fenêtre de validation mise à jour : -12 mois / +12 mois
+    (cohérence avec la consigne encadreur et filter_events dans app.py)
 
     Teste 500 chunks sur deux critères :
-        1. Présence d'une date valide dans la fenêtre < 1 an (champ 'Date :')
-        2. Présence d'une localisation parisienne (champ 'Lieu :' contenant 'paris' ou '75')
+        1. Date valide dans la fenêtre -12 mois / +12 mois
+        2. Localisation parisienne (lieu contient 'paris' ou '75')
 
-    Note sur les seuils :
-        Chaque événement génère ~4.9 chunks. Seul le premier chunk contient
-        les champs structurés (Date, Lieu). Les autres contiennent uniquement
-        la description textuelle. Le seuil de 50% est donc justifié et conservateur.
-
-    Args:
-        faiss_db (FAISS): Fixture de la base vectorielle.
-
-    Raises:
-        AssertionError: Si moins de 50% des chunks ont une date ou localisation valide.
+    Seuil : 50% minimum (justifié car seul le 1er chunk contient
+    les champs structurés, les autres sont descriptifs).
     """
     now          = datetime.now()
     one_year_ago = now.replace(year=now.year - 1)
+    one_year_fut = now.replace(year=now.year + 1)  # Consigne encadreur : +12 mois
 
-    sample_size   = min(faiss_db.index.ntotal, 500)
-    docs          = faiss_db.similarity_search("evenement culturel paris", k=sample_size)
-    total_chunks  = len(docs)
+    sample_size  = min(faiss_db.index.ntotal, 500)
+    docs         = faiss_db.similarity_search("evenement culturel paris", k=sample_size)
+    total_chunks = len(docs)
 
     dates_valides = 0
     loc_paris     = 0
@@ -266,7 +187,7 @@ def test_chunks_faiss_coherents(faiss_db):
         try:
             if date_match:
                 event_date = datetime.strptime(date_match.group(1), "%d/%m/%Y")
-                if one_year_ago.date() <= event_date.date() <= now.date():
+                if one_year_ago.date() <= event_date.date() <= one_year_fut.date():
                     dates_valides += 1
             if lieu_match:
                 lieu = lieu_match.group(1).lower()
@@ -283,6 +204,6 @@ def test_chunks_faiss_coherents(faiss_db):
         f"({dates_valides}/{total_chunks} chunks avec une date valide)"
     )
     assert taux_loc >= 0.50, (
-        f"Taux de localisation Paris insuffisant : {taux_loc*100:.1f}% < 50%\n"
-        f"({loc_paris}/{total_chunks} chunks avec 'paris' ou '75' dans le lieu)"
+        f"Taux localisation Paris insuffisant : {taux_loc*100:.1f}% < 50%\n"
+        f"({loc_paris}/{total_chunks} chunks avec 'paris' ou '75')"
     )
