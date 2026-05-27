@@ -1,145 +1,76 @@
 """
-app.py — MVP Puls-Events
-========================
-Sprint 1 + Sprint 2 + Sprint 3 FINAL
-- Chat multi-tours + Mémoire conversationnelle
-- Géolocalisation automatique + Menu déroulant 40 villes
-- Fallback smolagents (sites ciblés)
-- Fenêtre temporelle -12 mois / +12 mois 
-- Historique conservé avec tag ville par message
-- Monitoring + temps d'exécution
+app.py
+======
+Interface web Streamlit du chatbot RAG Puls-Events.
+
+Ce script est la version interface graphique de chatbot.py. Il expose le même
+pipeline RAG (FAISS + Mistral) via une interface Streamlit accessible dans
+le navigateur. Il intègre un filtrage intelligent par mois/année détecté
+automatiquement dans la question de l'utilisateur.
+
+Fonctionnalités :
+    - Champ de saisie + bouton "Chercher"
+    - Détection automatique du mois et de l'année dans la question
+    - Recherche sémantique FAISS (MMR) ou scan complet si date détectée
+    - Filtrage par date, déduplication des résultats
+    - Génération de réponse via API Mistral
+    - Affichage des sources dans un expander
+
+Usage :
+    streamlit run scripts/app.py
+
+Prérequis :
+    - data/index/faiss_index/ doit exister (lancez build_vector_db.py d'abord)
+    - MISTRAL_API_KEY dans le fichier .env
+    - pip install streamlit
 """
 
 import os
 import re
-import logging
-import requests
 import streamlit as st
 from datetime import datetime
 from dotenv import load_dotenv
-
 from langchain_mistralai import ChatMistralAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from agent_search import search_events_web
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
-
+import time
+# --------------------------------------------------
+# 1  Environnement
+# --------------------------------------------------
 load_dotenv()
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "open-mistral-7b")
-MISTRAL_TEMPERATURE = float(os.getenv("MISTRAL_TEMPERATURE", 0.4))
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-FAISS_MIN_RESULTS = int(os.getenv("FAISS_MIN_RESULTS", 2))
-
 if not MISTRAL_API_KEY:
-    st.error("❌ MISTRAL_API_KEY manquante dans le fichier .env")
+    st.error("MISTRAL_API_KEY manquante dans le fichier .env")
     st.stop()
 
-FAISS_MIN_RESULTS = 2
+# --------------------------------------------------
+# 2  UI
+# --------------------------------------------------
+st.set_page_config(page_title="Puls-Events", page_icon="🎉", layout="centered")
+st.title("🎉 Chatbot Puls-Events")
+st.caption("Posez vos questions sur les événements culturels parisiens")
 
-VILLES_FRANCE = [
-    "Paris", "Lyon", "Marseille", "Toulouse", "Nice", "Nantes", "Montpellier",
-    "Strasbourg", "Bordeaux", "Lille", "Rennes", "Reims", "Saint-Étienne",
-    "Toulon", "Grenoble", "Dijon", "Angers", "Nîmes", "Villeurbanne", "Clermont-Ferrand",
-    "Le Havre", "Aix-en-Provence", "Brest", "Tours", "Amiens", "Limoges",
-    "Perpignan", "Metz", "Besançon", "Orléans", "Mulhouse", "Rouen", "Caen",
-    "Nancy", "Avignon", "Poitiers", "Pau", "La Rochelle", "Calais", "Troyes",
-]
-
-st.set_page_config(
-    page_title="Puls-Events Chatbot - MVP",
-    page_icon="🎉",
-    layout="centered"
-)
-
-# ──────────────────────────────────────────────────
-# Géolocalisation automatique
-# ──────────────────────────────────────────────────
-def detect_city_from_ip() -> str:
-    try:
-        r = requests.get("http://ip-api.com/json/", timeout=4).json()
-        if r.get("status") == "success":
-            city = r.get("city", "Paris")
-            for v in VILLES_FRANCE:
-                if v.lower() in city.lower() or city.lower() in v.lower():
-                    return v
-            return city
-    except Exception as e:
-        logger.warning(f"Géolocalisation IP échouée : {e}")
-    return "Paris"
-
-# ──────────────────────────────────────────────────
-# Sidebar
-# ──────────────────────────────────────────────────
-with st.sidebar:
-    st.header("⚙️ Paramètres MVP")
-    st.markdown("#### 📍 Ma localisation")
-
-    if st.button("📡 Détecter ma ville automatiquement", use_container_width=True):
-        with st.spinner("Détection en cours..."):
-            ville_detectee = detect_city_from_ip()
-            st.session_state["ville_selectionnee"] = ville_detectee
-        st.success(f"📡 Ville détectée : **{ville_detectee}**")
-        st.rerun()
-
-    ville_default = st.session_state.get("ville_selectionnee", "Paris")
-    idx = VILLES_FRANCE.index(ville_default) if ville_default in VILLES_FRANCE else 0
-
-    # Pas de on_change — on conserve l'historique (mémoire conversationnelle)
-    # Chaque message est tagué avec sa ville pour éviter la confusion
-    ville = st.selectbox(
-        "Ma ville",
-        options=VILLES_FRANCE,
-        index=idx,
-        help="L'historique est conservé. Chaque réponse affiche sa ville d'origine."
-    )
-    st.session_state["ville_selectionnee"] = ville
-    st.caption("💡 L'historique est conservé entre les villes.")
-
-    st.divider()
-
-    use_agent = st.toggle(
-        "🌐 Recherche web (smolagents)",
-        value=True,
-        help=f"Active si FAISS trouve < {FAISS_MIN_RESULTS} résultats."
-    )
-
-    st.divider()
-
-    if st.button("🗑️ Nouvelle conversation", use_container_width=True):
-        st.session_state.messages  = []
-        st.session_state.memory    = []
-        st.session_state.query_log = []
-        logger.info("Session réinitialisée.")
-        st.rerun()
-
-    # Dashboard monitoring
-    if "query_log" in st.session_state and st.session_state.query_log:
-        st.divider()
-        st.markdown("### 📊 Surveillance")
-        logs        = st.session_state.query_log
-        nb_queries  = len(logs)
-        avg_latency = sum(l["latency_ms"] for l in logs) / nb_queries
-        nb_agent    = sum(1 for l in logs if l["source"] == "agent")
-        nb_faiss    = nb_queries - nb_agent
-
-        st.metric("Requêtes", nb_queries)
-        st.metric("Latence moy.", f"{avg_latency:.0f} ms")
-        col1, col2 = st.columns(2)
-        col1.metric("🗄️ FAISS", nb_faiss)
-        col2.metric("🌐 Agent", nb_agent)
-
-    st.caption("Puls-Events MVP v1.0 — Mai 2026")
-
-# ──────────────────────────────────────────────────
-# Ressources (mis en cache)
-# ──────────────────────────────────────────────────
+# --------------------------------------------------
+# 3  FAISS (mis en cache)
+# --------------------------------------------------
 @st.cache_resource
 def load_db() -> FAISS:
+    """
+    Charge l'index FAISS et le modèle d'embedding, mis en cache par Streamlit.
+
+    Utilise @st.cache_resource pour ne charger l'index qu'une seule fois
+    au démarrage de l'application, même si l'utilisateur interagit plusieurs fois.
+    Le modèle d'embedding doit être identique à celui utilisé lors de la création
+    de l'index (all-MiniLM-L6-v2, dim=384, normalisé).
+
+    Returns:
+        FAISS: Base vectorielle chargée depuis data/index/faiss_index/.
+
+    Raises:
+        Exception: Si le dossier d'index est absent ou corrompu.
+    """
     embeddings = HuggingFaceEmbeddings(
-        model_name= EMBEDDING_MODEL,
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
         model_kwargs={"device": "cpu"},
         encode_kwargs={"normalize_embeddings": True},
     )
@@ -149,204 +80,252 @@ def load_db() -> FAISS:
         allow_dangerous_deserialization=True
     )
 
+
 @st.cache_resource
 def load_llm() -> ChatMistralAI:
+    """
+    Instancie le modèle Mistral via l'API officielle, mis en cache par Streamlit.
+
+    Utilise @st.cache_resource pour créer le client LLM une seule fois.
+    La température basse (0.4) favorise des réponses factuelles et cohérentes
+    tout en conservant un style naturel.
+
+    Returns:
+        ChatMistralAI: Client LLM configuré pour Mistral-7B-Instruct.
+    """
     return ChatMistralAI(
-        model=MISTRAL_MODEL,
+        model="open-mistral-7b",
         api_key=MISTRAL_API_KEY,
-        temperature=MISTRAL_TEMPERATURE
+        temperature=0.4
     )
+
 
 vector_db = load_db()
 llm       = load_llm()
 
-# ──────────────────────────────────────────────────
-# Session state
-# ──────────────────────────────────────────────────
-if "memory"    not in st.session_state: st.session_state.memory    = []
-if "messages"  not in st.session_state: st.session_state.messages  = []
-if "query_log" not in st.session_state: st.session_state.query_log = []
+# --------------------------------------------------
+# 4  Détection du mois/année dans la question
+# --------------------------------------------------
 
-# ──────────────────────────────────────────────────
-# Utilitaires
-# ──────────────────────────────────────────────────
 MOIS_MAP = {
-    "janvier":"01","fevrier":"02","février":"02","mars":"03","avril":"04","mai":"05",
-    "juin":"06","juillet":"07","aout":"08","août":"08","septembre":"09",
-    "octobre":"10","novembre":"11","decembre":"12","décembre":"12",
-    "january":"01","february":"02","march":"03","april":"04","june":"06",
-    "july":"07","august":"08","september":"09","october":"10","november":"11","december":"12",
+    "janvier": "01", "fevrier": "02", "février": "02",
+    "mars": "03",    "avril": "04",   "mai": "05",
+    "juin": "06",    "juillet": "07", "aout": "08", "août": "08",
+    "septembre": "09", "octobre": "10", "novembre": "11",
+    "decembre": "12", "décembre": "12",
+    "january": "01", "february": "02", "march": "03", "april": "04",
+    "june": "06",    "july": "07",     "august": "08",
+    "september": "09", "october": "10", "november": "11", "december": "12",
 }
 
-def detect_date_filter(question):
-    q, mois_found, annee_found = question.lower(), None, None
+
+def detect_date_filter(question: str) -> tuple:
+    """
+    Détecte un mois et/ou une année dans la question de l'utilisateur.
+
+    Parcourt le dictionnaire MOIS_MAP pour identifier un nom de mois (français
+    ou anglais) dans la question, et utilise une regex pour extraire une année
+    au format 202x. Ces informations sont utilisées pour filtrer les résultats
+    FAISS par date de manière précise.
+
+    Args:
+        question (str): Question posée par l'utilisateur en langage naturel.
+
+    Returns:
+        tuple[str | None, str | None]: Tuple (mois_num, annee_str) où mois_num
+            est le numéro de mois sur 2 chiffres (ex: "03") et annee_str est
+            l'année sur 4 chiffres (ex: "2026"). Retourne (None, None) si
+            aucune date n'est détectée.
+
+    Example:
+        >>> detect_date_filter("événements à Paris en mars 2026")
+        ('03', '2026')
+        >>> detect_date_filter("concerts de jazz")
+        (None, None)
+    """
+    q           = question.lower()
+    mois_found  = None
+    annee_found = None
+
     for mot, num in MOIS_MAP.items():
         if mot in q:
             mois_found = num
             break
-    m = re.search(r"\b(202[0-9])\b", q)
-    if m: annee_found = m.group(1)
+
+    annee_match = re.search(r"\b(202[0-9])\b", q)
+    if annee_match:
+        annee_found = annee_match.group(1)
+
     return mois_found, annee_found
 
-def parse_event(text):
-    n = re.search(r"[EÉ]v[eé]nement\s*:\s*(.*?)\.", text, re.IGNORECASE)
-    d = re.search(r"Date\s*:\s*(\d{2}/\d{2}/\d{4})", text)
-    l = re.search(r"Lieu\s*:\s*(.*?)\.", text)
-    if not n or not d: return None
-    return {"name": n.group(1).strip(), "date": d.group(1).strip(),
-            "lieu": l.group(1).strip() if l else "Inconnu"}
 
-def filter_events(docs, mois_filter=None, annee_filter=None, ville_filter=None):
+# --------------------------------------------------
+# 5  Parsing et filtrage des événements
+# --------------------------------------------------
+
+def parse_event(text: str) -> dict | None:
+    """
+    Extrait les informations structurées d'un chunk de texte FAISS.
+
+    Applique trois expressions régulières pour retrouver le nom de l'événement,
+    sa date et son lieu depuis le contenu brut d'un chunk. La regex pour le
+    nom est insensible aux accents pour gérer les deux formes : 'Evenement'
+    (écrit par fetch_events.py) et 'Événement' (forme accentuée).
+
+    Args:
+        text (str): Contenu brut d'un chunk FAISS (page_content).
+
+    Returns:
+        dict | None: Dictionnaire avec les clés 'name', 'date', 'lieu',
+            ou None si les champs obligatoires sont absents du chunk.
+
+    Example:
+        >>> chunk = "Evenement : Jazz Café. Lieu : 10 rue de la Paix, Paris. Date : 15/02/2026."
+        >>> parse_event(chunk)
+        {'name': 'Jazz Café', 'date': '15/02/2026', 'lieu': '10 rue de la Paix, Paris'}
+    """
+    name_match = re.search(r"[EÉ]v[eé]nement\s*:\s*(.*?)\.", text, re.IGNORECASE)
+    date_match = re.search(r"Date\s*:\s*(\d{2}/\d{2}/\d{4})", text)
+    lieu_match = re.search(r"Lieu\s*:\s*(.*?)\.", text)
+
+    if not name_match or not date_match:
+        return None
+
+    return {
+        "name": name_match.group(1).strip(),
+        "date": date_match.group(1).strip(),
+        "lieu": lieu_match.group(1).strip() if lieu_match else "Paris",
+    }
+
+
+def filter_events(docs: list, mois_filter: str = None, annee_filter: str = None) -> list:
+    """
+    Filtre les événements selon la fenêtre temporelle et les critères de date détectés.
+
+    Applique trois niveaux de filtrage successifs :
+        1. Fenêtre globale [-1 an, +1 an] : élimine les événements trop anciens ou trop futurs.
+        2. Filtre mois (optionnel) : conserve uniquement le mois détecté dans la question.
+        3. Filtre année (optionnel) : conserve uniquement l'année détectée dans la question.
+    Puis déduplique les résultats pour éviter les doublons dans la réponse.
+
+    Args:
+        docs (list[Document]): Documents LangChain retournés par FAISS.
+        mois_filter (str | None): Numéro de mois sur 2 chiffres (ex: "03"), ou None.
+        annee_filter (str | None): Année sur 4 chiffres (ex: "2026"), ou None.
+
+    Returns:
+        list[str]: Liste de chaînes formatées "nom - date - lieu", sans doublons,
+            correspondant aux critères de filtrage.
+
+    Example:
+        >>> docs = vector_db.similarity_search("jazz", k=50)
+        >>> events = filter_events(docs, mois_filter="02", annee_filter="2026")
+        >>> print(events[0])
+        Concert Jazz - 20/02/2026 - 142 Avenue de Flandre, Paris
+    """
     now          = datetime.now()
     one_year_ago = now.replace(year=now.year - 1)
-    one_year_fut = now.replace(year=now.year + 1)  
-    seen, events = set(), []
+    one_year_fut = now.replace(year=now.year + 1)
+
+    seen   = set()
+    events = []
+
     for doc in docs:
         ev = parse_event(doc.page_content)
-        if not ev: continue
-        try: ev_date = datetime.strptime(ev["date"], "%d/%m/%Y")
-        except ValueError: continue
-        # Fenêtre -12 mois / +12 mois
-        if not (one_year_ago.date() <= ev_date.date() <= one_year_fut.date()): continue
-        if mois_filter and f"{ev_date.month:02d}" != mois_filter: continue
-        if annee_filter and str(ev_date.year) != annee_filter: continue
-        if ville_filter and ville_filter.lower() not in ev["lieu"].lower(): continue
+        if ev is None:
+            continue
+        try:
+            ev_date = datetime.strptime(ev["date"], "%d/%m/%Y")
+        except ValueError:
+            continue
+
+        if not (one_year_ago.date() <= ev_date.date() <= one_year_fut.date()):
+            continue
+        if mois_filter and f"{ev_date.month:02d}" != mois_filter:
+            continue
+        if annee_filter and str(ev_date.year) != annee_filter:
+            continue
+
         line = f"{ev['name']} - {ev['date']} - {ev['lieu']}"
         if line not in seen:
             seen.add(line)
             events.append(line)
+
     return events
 
-def build_prompt(question, events, ville):
-    # Mémoire conversationnelle — 10 derniers échanges
-    history_text = ""
-    for msg in st.session_state.memory[-10:]:
-        role = "Utilisateur" if msg["role"] == "user" else "Assistant"
-        history_text += f"{role} : {msg['content']}\n"
-    contexte = "\n".join(events[:8])
-    prompt = (
-        f"[INST] Tu es l'assistant Puls-Events, expert en événements culturels à {ville}.\n"
-        "Réponds en français, de façon naturelle, concise et polie.\n"
-        "Utilise UNIQUEMENT les événements de la liste ci-dessous.\n"
-        "Si la question s'appuie sur l'historique, utilise-le.\n\n"
-    )
-    if history_text:
-        prompt += f"HISTORIQUE :\n{history_text}\n"
-    prompt += f"ÉVÉNEMENTS ({ville}) :\n{contexte}\n\nQUESTION : {question} [/INST]"
-    return prompt
 
-# ──────────────────────────────────────────────────
-# Interface chat
-# ──────────────────────────────────────────────────
-st.title("🎉 Puls-Events — Votre Assistant Privé")
-#st.caption(f"📍 Recherche à **{ville}**")
+# --------------------------------------------------
+# 6  Interface utilisateur
+# --------------------------------------------------
+question = st.text_input(
+    "Pose ta question :",
+    placeholder="Ex : événements à Paris en octobre 2025...",
+)
 
-# Affichage historique — chaque message affiche sa ville d'origine
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-        if msg["role"] == "assistant" and "latency_ms" in msg:
-            ville_msg = msg.get("ville", "")
-            st.caption(f"⏱️ {msg['latency_ms']:.0f} ms · {msg['source']} · 📍 {ville_msg}")
+clicked = st.button("🔍 Chercher")
 
-# ──────────────────────────────────────────────────
-# Traitement de la question
-# ──────────────────────────────────────────────────
-question = st.chat_input("Qu'allez-vous faire ce week-end ?")
+# --------------------------------------------------
+# 7  Pipeline RAG — Recherche et génération
+# --------------------------------------------------
+if clicked and not question:
+    st.warning("Veuillez saisir une question.")
 
-if question:
-    start_time         = datetime.now()
-    fallback_activated = False
-    source_used        = "faiss"
+if question and clicked:
+    start_total = time.time()
 
-    st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
-        st.markdown(question)
+    mois_filter, annee_filter = detect_date_filter(question)
 
-    with st.chat_message("assistant"):
+    with st.spinner("Recherche en cours..."):
+        t0 = time.time()
 
-        # Étape 1 : FAISS
-        with st.spinner("🔍 Recherche dans la base locale..."):
-            mois_filter, annee_filter = detect_date_filter(question)
-            if mois_filter or annee_filter:
-                all_docs = vector_db.similarity_search(question, k=vector_db.index.ntotal)
-            else:
-                retriever = vector_db.as_retriever(
-                    search_type="mmr",
-                    search_kwargs={"k": 15, "fetch_k": 40}
-                )
-                all_docs = retriever.invoke(question)
-            ville_filter = ville.strip() if ville.strip() else None
-            events = filter_events(all_docs, mois_filter, annee_filter, ville_filter)
-
-        # Étape 2 : Fallback smolagents
-        if len(events) < FAISS_MIN_RESULTS and use_agent:
-            fallback_activated = True
-            source_used        = "agent"
-
-            now_calc    = datetime.now()
-            annee_cible = now_calc.year
-            if mois_filter:
-                mois_num = int(mois_filter)
-                annee_cible = now_calc.year if mois_num <= now_calc.month else now_calc.year + 1
-
-            with st.spinner(f"⚠️ Recherche web en cours pour {ville}..."):
-                if mois_filter:
-                    question_enrichie = (
-                        f"Trouve des événements réels à {ville} en {question} {annee_cible}. "
-                        f"ATTENTION : cherche UNIQUEMENT à {ville}, année {annee_cible}."
-                    )
-                else:
-                    question_enrichie = (
-                        f"{question}. Cherche à {ville} uniquement."
-                    )
-                web_results = search_events_web(question_enrichie, ville=ville, timeout=20)
-
-            if web_results:
-                response_text = web_results
-            else:
-                response_text = (
-                    f"Je n'ai pas trouvé d'événements à {ville}. "
-                    "Essayez une autre ville ou reformulez votre question."
-                )
+        if mois_filter or annee_filter:
+            all_docs = vector_db.similarity_search(
+                question,
+                k=vector_db.index.ntotal
+            )
         else:
-            # Étape 3 : Génération RAG
-            with st.spinner("✍️ Génération de la réponse..."):
-                prompt        = build_prompt(question, events, ville)
-                response      = llm.invoke(prompt)
-                response_text = response.content
+            retriever = vector_db.as_retriever(
+                search_type="mmr",
+                search_kwargs={"k": 15, "fetch_k": 40}
+            )
+            all_docs = retriever.invoke(question)
 
-        duration_ms  = (datetime.now() - start_time).total_seconds() * 1000
-        source_label = "🌐 Web (smolagents)" if fallback_activated else f"🗄️ Base locale — {len(events)} résultats"
+        t1 = time.time()
 
-        st.markdown(response_text)
-        st.caption(f"⏱️ **{duration_ms:.0f} ms** · {source_label} · 📍 {ville}")
+        events = filter_events(all_docs, mois_filter, annee_filter)
+        t2 = time.time()
 
-        if fallback_activated:
-            st.info("ℹ️ Résultats issus de la recherche web en temps réel.")
+    if not events:
+        st.warning("Aucun événement trouvé pour cette recherche.")
+    else:
+        contexte = "\n".join(events[:8])
 
-        if events and not fallback_activated:
-            with st.expander(f"📋 Sources ({len(events)} événements)"):
-                for ev in events:
-                    st.write(f"• {ev}")
+        prompt = (
+            "[INST] Tu es l'assistant Puls-Events. "
+            "En utilisant UNIQUEMENT la liste suivante, reponds en francais "
+            "de facon naturelle et polie.\n\n"
+            "LISTE DES EVENEMENTS :\n"
+            + contexte
+            + "\n\nQUESTION : " + question + " [/INST]"
+        )
 
-    # Monitoring
-    st.session_state.query_log.append({
-        "timestamp":  datetime.now().strftime("%H:%M:%S"),
-        "question":   question[:60],
-        "nb_results": len(events),
-        "source":     source_used,
-        "latency_ms": duration_ms,
-    })
-    logger.info(f"Query: '{question}' | Ville: {ville} | Source: {source_used} | Latency: {duration_ms:.0f}ms")
+        response = llm.invoke(prompt)
+        t3 = time.time()
 
-    # Mémoire conversationnelle
-    st.session_state.memory.append({"role": "user",      "content": question})
-    st.session_state.memory.append({"role": "assistant", "content": response_text})
-    st.session_state.messages.append({
-        "role":       "assistant",
-        "content":    response_text,
-        "latency_ms": duration_ms,
-        "source":     source_label,
-        "ville":      ville,  # Tag ville pour identifier l'origine de chaque réponse
-    })
+        # ✅ Réponse
+        st.success(response.content)
+
+        # ✅ Temps global
+        total_time = round(t3 - start_total, 2)
+        st.info(f"⏱️ Temps total : {total_time} secondes")
+
+        # ✅ Détail (bonus très pro)
+        with st.expander("⚙️ Détails des performances"):
+            st.write(f"🔎 Retrieval : {round(t1 - t0, 2)} s")
+            st.write(f"🧹 Filtrage  : {round(t2 - t1, 2)} s")
+            st.write(f"🤖 LLM       : {round(t3 - t2, 2)} s")
+
+        # ✅ Sources
+        with st.expander(f"Voir les événements sources ({len(events)} trouvés)"):
+            for ev in events:
+                st.write("• " + ev)
