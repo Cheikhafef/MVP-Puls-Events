@@ -1,0 +1,71 @@
+/* ===== PRIMARY COLOR ===== */
+:root {
+  --primary: 25 95% 53% !important;
+  --primary-foreground: 0 0% 100% !important;
+  --ring: 25 95% 53% !important;
+}
+
+.dark {
+  --primary: 25 95% 53% !important;
+  --primary-foreground: 0 0% 100% !important;
+  --ring: 25 95% 53% !important;
+}
+
+button,
+button.bg-primary,
+.bg-primary {
+  background-color: hsl(25, 95%, 53%) !important;
+  border-color: hsl(25, 95%, 53%) !important;
+  color: white !important;
+}
+
+button:hover {
+  background-color: hsl(25, 95%, 45%) !important;
+}
+
+/* ===== REMOVE CHAINLIT BRAND ===== */
+header a svg { display: none !important; }
+header a span { display: none !important; }
+header a::after {
+  content: "";
+  display: block;
+  width: 140px;
+  height: 40px;
+  background-image: url("https://evwlmilfssspshkszygc.supabase.co/storage/v1/object/public/public-assets/logo.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+/* ===== LOGIN IMAGE FIX ===== */
+img[src*="logo"] {
+  filter: brightness(1) !important;
+  opacity: 1 !important;
+}
+
+/* Force couleurs login image */
+div[class*="login"] img,
+div[class*="Login"] img,
+.grid img,
+section img {
+  filter: brightness(1) saturate(1) !important;
+  opacity: 1 !important;
+  mix-blend-mode: normal !important;
+}
+
+/* ===== AVATAR FIX ===== */
+img { background: transparent !important; }
+
+.cl-avatar,
+.cl-avatar.rounded-full {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.cl-avatar img {
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}
+
+header div, header div * { background: transparent !important; }
