@@ -1,29 +1,50 @@
-/* ===== PRIMARY COLOR ===== */
+/* ===== PRIMARY COLOR - GRIS BLEUTE ===== */
 :root {
-  --primary: 25 95% 53% !important;
+  --primary: 25 65% 42% !important;
   --primary-foreground: 0 0% 100% !important;
-  --ring: 25 95% 53% !important;
+  --ring: 25 65% 42% !important;
 }
-
 .dark {
-  --primary: 25 95% 53% !important;
+  --primary: 25 65% 52% !important;
   --primary-foreground: 0 0% 100% !important;
-  --ring: 25 95% 53% !important;
+  --ring: 25 65% 52% !important;
 }
 
-button,
-button.bg-primary,
-.bg-primary {
-  background-color: hsl(25, 95%, 53%) !important;
-  border-color: hsl(25, 95%, 53%) !important;
+/* ===== BOUTONS ===== */
+button.bg-primary, .bg-primary {
+  background-color: hsl(25, 65%, 42%) !important;
+  border-color: hsl(25, 65%, 42%) !important;
   color: white !important;
 }
-
-button:hover {
-  background-color: hsl(25, 95%, 45%) !important;
+form button[type="submit"], button[type="submit"] {
+  background-color: hsl(25, 65%, 42%) !important;
+  border-color: hsl(25, 65%, 42%) !important;
+  color: white !important;
+}
+form button[type="submit"]:hover, button[type="submit"]:hover {
+  background-color: hsl(25, 65%, 35%) !important;
+}
+.cl-thread-list button, [class*="thread"] button {
+  background-color: hsl(25, 65%, 42%) !important;
+  border-color: hsl(25, 65%, 42%) !important;
+}
+button[id*="action"], [class*="action-button"] {
+  background-color: hsl(25, 65%, 42%) !important;
+  border-color: hsl(25, 65%, 42%) !important;
+  color: white !important;
+}
+button[type="button"], input + button, input ~ button {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: inherit !important;
+}
+header button {
+  background-color: transparent !important;
+  border-color: transparent !important;
 }
 
-/* ===== REMOVE CHAINLIT BRAND ===== */
+/* ===== HEADER - LOGO PULS-EVENTS ===== */
 header a svg { display: none !important; }
 header a span { display: none !important; }
 header a::after {
@@ -31,41 +52,142 @@ header a::after {
   display: block;
   width: 140px;
   height: 40px;
-  background-image: url("https://evwlmilfssspshkszygc.supabase.co/storage/v1/object/public/public-assets/logo.png");
+  background-image: url("https://ljhiexubtgighdhahgpg.supabase.co/storage/v1/object/public/public-assets/logo.png");
   background-size: contain;
   background-repeat: no-repeat;
 }
 
-/* ===== LOGIN IMAGE FIX ===== */
-img[src*="logo"] {
-  filter: brightness(1) !important;
+/* ===== LOGIN - SUPPRIMER BRANDING CHAINLIT GAUCHE ===== */
+img[alt*="Chainlit"], img[alt="Chainlit"] { display: none !important; }
+a[href="/"] { pointer-events: none !important; }
+a[href="/"] svg { display: none !important; }
+a[href="/"] img { display: none !important; }
+a[href="/"] span { display: none !important; }
+a[href="/"] p { display: none !important; }
+div.grid > div:first-child a,
+div.grid > div:first-child a * { display: none !important; }
+div.grid > div:first-child p { display: none !important; }
+div.grid > div:first-child svg { display: none !important; }
+div.grid > div:first-child img:not([src*="logo.png"]) { display: none !important; }
+
+/* ===== LOGIN - PANNEAU DROIT - ANNULER FILTRE TAILWIND ===== */
+.brightness-\[0\.2\] { filter: none !important; }
+.grayscale { filter: none !important; }
+
+img[src*="logo.png"] {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  filter: none !important;
   opacity: 1 !important;
+  mix-blend-mode: normal !important;
+  background: transparent !important;
+  transform: scale(0.75) !important;
 }
 
-/* Force couleurs login image */
-div[class*="login"] img,
-div[class*="Login"] img,
-.grid img,
-section img {
-  filter: brightness(1) saturate(1) !important;
+/* ===== WATERMARK ===== */
+a[href*="chainlit.io"], .watermark { display: none !important; }
+
+/* ===== IMAGES ===== */
+.grid img, section img {
   opacity: 1 !important;
   mix-blend-mode: normal !important;
 }
-
-/* ===== AVATAR FIX ===== */
 img { background: transparent !important; }
 
-.cl-avatar,
-.cl-avatar.rounded-full {
+/* ===== AVATAR ===== */
+.cl-avatar, .cl-avatar.rounded-full {
   background: transparent !important;
   box-shadow: none !important;
   border: none !important;
 }
-
 .cl-avatar img {
   background: transparent !important;
   border-radius: 0 !important;
   padding: 0 !important;
 }
-
 header div, header div * { background: transparent !important; }
+
+/* ===== CHAT PAGE — LOGO DANS LA BARRE DE SAISIE : MASQUER ===== */
+/*
+  Chainlit 2.x injecte le logo (logo_file_url) comme watermark
+  centré dans la zone d'input quand aucun message n'est affiché.
+  On le masque ici pour éviter le doublon avec le welcome logo.
+*/
+[class*="inputBox"] img[src*="logo.png"],
+[class*="InputBox"] img[src*="logo.png"],
+[class*="chat-input"] img[src*="logo.png"],
+[class*="composer"] img[src*="logo.png"],
+[class*="Composer"] img[src*="logo.png"],
+[class*="messageInput"] img[src*="logo.png"],
+[class*="MessageInput"] img[src*="logo.png"],
+/* watermark générique dans l'input */
+[class*="input"] [class*="logo"],
+[class*="Input"] [class*="logo"],
+[class*="input"] [class*="watermark"],
+/* img dans le footer de page chat (hors header et login) */
+main img[src*="logo.png"]:not([class*="welcome"]):not([class*="avatar"]) {
+  display: none !important;
+}
+
+/* ===== CHAT PAGE — LOGO AU-DESSUS DU WELCOME MESSAGE ========= */
+/*
+  Chainlit 2.x : quand aucun thread n'est actif, affiche un
+  conteneur centré (WelcomeScreen / emptyThread).
+  On y insère le logo via ::before, centré, au-dessus du contenu.
+*/
+
+/* Conteneur du welcome screen — flex colonne */
+[class*="welcome"],
+[class*="Welcome"],
+[class*="emptyThread"],
+[class*="EmptyThread"],
+[class*="empty-thread"],
+[class*="WelcomeScreen"],
+[class*="welcomeScreen"] {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  padding-top: 1.5rem !important;
+}
+
+/* Logo injecté via pseudo-élément ::before */
+[class*="welcome"]::before,
+[class*="Welcome"]::before,
+[class*="emptyThread"]::before,
+[class*="EmptyThread"]::before,
+[class*="empty-thread"]::before,
+[class*="WelcomeScreen"]::before,
+[class*="welcomeScreen"]::before {
+  content: "" !important;
+  display: block !important;
+  width: 200px !important;
+  height: 72px !important;
+  background-image: url("https://ljhiexubtgighdhahgpg.supabase.co/storage/v1/object/public/public-assets/logo.png") !important;
+  background-repeat: no-repeat !important;
+  background-size: contain !important;
+  background-position: center !important;
+  margin: 0 auto 1.25rem auto !important;
+  flex-shrink: 0 !important;
+}
+
+/* Masquer le logo natif Chainlit s'il existe déjà dans le welcome
+   (évite doublon si Chainlit l'injecte lui-même via logo_file_url) */
+[class*="welcome"] img[src*="logo.png"]:first-of-type,
+[class*="Welcome"] img[src*="logo.png"]:first-of-type,
+[class*="emptyThread"] img[src*="logo.png"]:first-of-type,
+[class*="EmptyThread"] img[src*="logo.png"]:first-of-type {
+  display: none !important;
+}
+
+/* Centrer le texte markdown du message de bienvenue */
+[class*="welcome"] .markdown,
+[class*="Welcome"] .markdown,
+[class*="emptyThread"] .markdown,
+[class*="EmptyThread"] .markdown {
+  text-align: left !important;
+  max-width: 660px !important;
+  margin: 0 auto !important;
+}

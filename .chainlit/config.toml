@@ -34,28 +34,18 @@ reaction_on_message_received = false
 [features.mcp]
     enabled = false
 
-[features.mcp.sse]
-    enabled = true
-
-[features.mcp.streamable-http]
-    enabled = true
-
-[features.mcp.stdio]
-    enabled = true
-    allowed_executables = [ "npx", "uvx" ]
-
 [UI]
 name = "Puls-Events"
-logo_file_url = "https://evwlmilfssspshkszygc.supabase.co/storage/v1/object/public/public-assets/logo.png"
-default_avatar_file_url = "https://evwlmilfssspshkszygc.supabase.co/storage/v1/object/public/public-assets/logo.png"
-login_page_image = "https://evwlmilfssspshkszygc.supabase.co/storage/v1/object/public/public-assets/logo.png"
+logo_file_url = "https://ljhiexubtgighdhahgpg.supabase.co/storage/v1/object/public/public-assets/logo.png"
+default_avatar_file_url = "https://ljhiexubtgighdhahgpg.supabase.co/storage/v1/object/public/public-assets/logo.png"
+login_page_image = "https://ljhiexubtgighdhahgpg.supabase.co/storage/v1/object/public/public-assets/logo.png"
 default_theme = "dark"
 language = "fr-FR"
 default_sidebar_state = "open"
 confirm_new_chat = false
 cot = "full"
 alert_style = "classic"
-custom_css = "https://evwlmilfssspshkszygc.supabase.co/storage/v1/object/public/public-assets/custom.css"
+custom_css = "https://ljhiexubtgighdhahgpg.supabase.co/storage/v1/object/public/public-assets/custom.css"
 
 [meta]
 generated_by = "2.11.1"

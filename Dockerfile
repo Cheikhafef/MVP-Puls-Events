@@ -20,33 +20,41 @@ RUN pip install --no-cache-dir \
     accelerate \
     numpy==1.26.4
 
-# Etape 3 : core
-RUN pip install --no-cache-dir streamlit==1.55.0 python-dotenv requests pandas
+# Etape 3 : core (PAS de streamlit — plus utilisé)
+RUN pip install --no-cache-dir python-dotenv requests pandas
 
 # Etape 4 : LangChain
-RUN pip install --no-cache-dir langchain langchain-mistralai langchain-huggingface langchain-community langchain-qdrant
+RUN pip install --no-cache-dir \
+    langchain \
+    langchain-mistralai \
+    langchain-huggingface \
+    langchain-community \
+    langchain-qdrant
 
-# Etape 5 : embeddings + qdrant
-RUN pip install --no-cache-dir sentence-transformers==2.7.0 faiss-cpu qdrant-client
+# Etape 5 : embeddings + qdrant (PAS de faiss-cpu — on utilise Qdrant Cloud)
+RUN pip install --no-cache-dir sentence-transformers==2.7.0 qdrant-client
 
-# Etape 6 : smolagents (sans upgrader tokenizers)
+# Etape 6 : smolagents
 RUN pip install --no-cache-dir smolagents duckduckgo-search ddgs litellm
 
 # Etape 7 : forcer tokenizers 0.19.1 apres litellm
 RUN pip install --no-cache-dir tokenizers==0.19.1
 
-# Etape 8 : chainlit
-RUN pip install --no-cache-dir chainlit
-RUN pip install --no-cache-dir asyncpg
-# Copie du code
-COPY scripts/ ./scripts/
-COPY data/ ./data/
+# Etape 8 : chainlit + DB layer (greenlet OBLIGATOIRE pour SQLAlchemy async)
+RUN pip install --no-cache-dir chainlit asyncpg sqlalchemy greenlet
+
+# Etape 9 : pre-telecharger le modele embedding (evite timeout au demarrage)
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
+
+# Copie du code — structure racine (PAS de sous-dossier scripts/)
+COPY chatbot_chainlit.py .
+COPY agent_search.py .
 COPY .chainlit/ ./.chainlit/
 COPY chainlit.md .
-COPY .env .
+# NE PAS copier .env — les variables sont injectees par Azure Container Apps
 
 EXPOSE 8000
 
-# Lance Chainlit
-CMD ["chainlit", "run", "scripts/chatbot_chainlit.py", \
+# Lance Chainlit — fichier a la RACINE
+CMD ["chainlit", "run", "chatbot_chainlit.py", \
      "--port", "8000", "--host", "0.0.0.0"]
