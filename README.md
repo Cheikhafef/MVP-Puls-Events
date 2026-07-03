@@ -5,7 +5,7 @@ Architecture **RAG hybride + Agent Web** combinant **Qdrant Cloud**, **Chainlit*
 
 > Projet realise dans le cadre d'une formation Data Engineer  — Puls-Events (Projet 13)
 
-**URL production :** https://puls-events-app.nicerock-814bd60c.francecentral.azurecontainerapps.io
+**URL production :** https://puls-events-app.purplepebble-68cea5a4.francecentral.azurecontainerapps.io/
 
 ---
 
