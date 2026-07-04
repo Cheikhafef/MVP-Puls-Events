@@ -253,3 +253,4 @@ flowchart TD
 GitHub : [Cheikhafef](https://github.com/Cheikhafef) · Email : cheikhafef@gmail.com
 
 (https://github.com/Cheikhafef/MVP-Puls-Events)
+[![Déployé sur Azure](https://img.shields.io/badge/Deployment-Azure%20Container%20Apps-blue)](https://puls-events-app.purplepebble-68cea5a4.francecentral.azurecontainerapps.io/)
