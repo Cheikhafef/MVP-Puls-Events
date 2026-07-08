@@ -48,7 +48,8 @@ Le système MVP :
 ```
 puls-events-mvp/
 |
-|-- .env                        <- Fichier local contenant les clés API (non versionné)
+|-- .env                        <- Fichier local (non versionné, jamais commit)
+|-- .env.example                <- NOUVEAU : exemple sans secrets, à copier en .env
 |-- .dockerignore
 |-- .gitignore
 |-- Dockerfile
@@ -58,11 +59,14 @@ puls-events-mvp/
 |-- chatbot_chainlit.py         <- Application principale (interface, auth, RAG, historique)
 |-- agent_search.py             <- Module fallback web (smolagents + DuckDuckGo)
 |-- build_vector_db.py          <- Indexation des embeddings dans Qdrant
-|-- fetch_events.py             <- Collecte des événements via l’API Open Agenda
+|-- fetch_events.py             <- Collecte des événements via l'API Open Agenda
 |-- migrate_to_qdrant.py        <- Migration des données locales vers Qdrant Cloud
 |-- chainlit.py                 <- Script de configuration ou test local de Chainlit
 |
-|-- data/                       <- Données sources (embeddings, fichiers d’indexation)
+|-- tests/                      <- NOUVEAU : tests unitaires + intégration (pytest)
+|   `-- test_basic.py
+|
+|-- data/                       <- Données sources (embeddings, fichiers d'indexation)
 |-- .chainlit/
 |   `-- config.toml             <- Configuration Chainlit (UI, thème, fonctionnalités)
 |
@@ -71,7 +75,7 @@ puls-events-mvp/
 |
 |-- acr_config.json             <- Configuration Azure Container Registry
 |-- containerapp_config.json    <- Configuration Azure Container Apps
-|-- env_config.json             <- Variables d’environnement Azure
+|-- env_config.json             <- Variables d'environnement Azure
 
 ```
 
