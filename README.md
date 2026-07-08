@@ -1,45 +1,45 @@
 # Puls-Events — Chatbot RAG Hybride (MVP en production) <br>
 
-Assistant intelligent de recommandation d'evenements culturels francais.
-Architecture **RAG hybride + Agent Web** combinant **Qdrant Cloud**, **Chainlit**, **Mistral-7B** et **smolagents (Hugging Face)**, deployee sur **Azure Container Apps**.
+Assistant intelligent de recommandation d'événements culturels français.
+Architecture **RAG hybride + Agent Web** combinant **Qdrant Cloud**, **Chainlit**, **Mistral-7B** et **smolagents (Hugging Face)**, déployée sur **Azure Container Apps**.
 
-> Projet realise dans le cadre d'une formation Data Engineer  — Puls-Events (Projet 13)
+> Projet réalisé dans le cadre d'une formation Data Engineer  — Puls-Events (Projet 13)
 
 **URL production :** https://puls-events-app.purplepebble-68cea5a4.francecentral.azurecontainerapps.io/
 
 ---
 
-## Evolution : POC vers MVP <br>
+## Évolution : POC vers MVP <br>
 
-| Fonctionnalite | POC (v1) | MVP (v2 — production) |
+| Fonctionnalité | POC (v1) | MVP (v2 — production) |
 |---|---|---|
 | Interface | Streamlit (bouton) | Chainlit (chat multi-tours, auth, historique) |
 | Base vectorielle | FAISS local | Qdrant Cloud (1786 vecteurs, dim=384) |
-| Memoire | Aucune | Conversationnelle persistante (Supabase PostgreSQL) |
-| Geographie | Paris en dur | 37 villes + detection GeoIP hybride |
-| Authentification | Aucune | Email + mot de passe, multi-utilisateurs |
-| Sources web | Aucune | smolagents + DuckDuckGo (fallback si < 2 resultats) |
-| Fenetre temporelle | 12 mois passes | 2025, 2026, 2027 (filtres stricts mois + annee + saisons) |
-| Deploiement | Local uniquement | Azure Container Apps (Docker, HTTPS natif, auto-scaling) |
-| Personnalisation UI | Aucune | Theme custom (CSS), branding Chainlit retire |
+| Mémoire | Aucune | Conversationnelle persistante (Supabase PostgreSQL) |
+| Géographie | Paris en dur | Base Paris (Qdrant Cloud) + Fallback Agent Web pour le reste des villes françaises|
+| Authentification | Aucune | username + mot de passe, multi-utilisateurs |
+| Sources web | Aucune | smolagents + DuckDuckGo (fallback si < 2 résultats) |
+| Fenêtre temporelle | 12 mois passés | 2025, 2026, 2027 (filtres stricts mois + année + saisons) |
+| Déploiement | Local uniquement | Azure Container Apps (Docker, HTTPS natif, auto-scaling) |
+| Personnalisation UI | Aucune | Thème custom (CSS), branding Chainlit retiré |
 
 ---
 
 ## Description <br>
 
-Ce projet est developpe pour **Puls-Events**, une plateforme de decouverte d'evenements culturels en France.
+Ce projet est développé pour **Puls-Events**, une plateforme de découverte d'événements culturels en France.
 
-Le systeme MVP :
-- Collecte les evenements via l'API Open Agenda
-- Indexe les embeddings dans **Qdrant Cloud** (HuggingFace MiniLM-L6-v2, dim=384, 1786 vecteurs)
-- Genere des reponses naturelles via **Mistral-7B** (open-mistral-7b)
-- Bascule automatiquement vers **smolagents** (DuckDuckGo) si Qdrant retourne moins de 2 resultats
-- Pour les villes hors Paris : bascule **directement** vers la recherche web (Qdrant ne couvre que Paris)
-- Retient l'**historique conversationnel complet** via Supabase PostgreSQL (5 tables)
-- Detecte la **ville automatiquement** via GeoIP (ipapi.co) + detection dans le texte
-- Applique des **filtres temporels stricts** : mois + annee, saisons, demain, hier, ce week-end
-- Gere l'**authentification multi-utilisateurs** (email + mot de passe)
-- Est deploye en **production** sur Azure Container Apps avec HTTPS natif
+Le système MVP :
+- Collecte les événements via l'API Open Agenda
+- Indexe les embeddings dans **Qdrant Cloud** (HuggingFace MiniLM-L6-v2, dim=384, 1786 vecteurs) — **Paris uniquement**
+- génère des réponses naturelles via **Mistral-7B** (open-mistral-7b)
+- Bascule automatiquement vers **smolagents** (DuckDuckGo) si Qdrant retourne moins de 2 résultats
+- Pour les 36 villes hors Paris : bascule **directement** vers la recherche web (Qdrant ne couvre que Paris ; ces villes ne sont pas indexées dans la base vectorielle)
+- Retient l'**historique conversationnel complet** via Supabase PostgreSQL (5 tables) — stockage des échanges et reprise de conversation ; ne constitue pas encore un profil utilisateur personnalisé (voir Roadmap)
+- Détecte la **ville automatiquement** via GeoIP (ipapi.co) + détection dans le texte
+- Applique des **filtres temporels stricts** (mois + année, saisons) **et relatifs** (demain, hier, ce week-end) — les deux types de filtres sont livrés et stabilisés en production
+- Gère l'**authentification multi-utilisateurs** (username + mot de passe hashé)
+- Est déployé en **production** sur Azure Container Apps avec HTTPS natif
 
 ---
 
@@ -48,20 +48,31 @@ Le systeme MVP :
 ```
 puls-events-mvp/
 |
-|-- .env                        <- Cles API et secrets (ne jamais versionner !)
+|-- .env                        <- Fichier local contenant les clés API (non versionné)
 |-- .dockerignore
 |-- .gitignore
 |-- Dockerfile
-|-- requirements.txt
+|-- requirements.txt            <- Dépendances avec versions figées
 |-- README.md
 |
 |-- chatbot_chainlit.py         <- Application principale (interface, auth, RAG, historique)
 |-- agent_search.py             <- Module fallback web (smolagents + DuckDuckGo)
-|-- .chainlit/
-|   `-- config.toml             <- Configuration Chainlit (UI, theme, features)
+|-- build_vector_db.py          <- Indexation des embeddings dans Qdrant
+|-- fetch_events.py             <- Collecte des événements via l’API Open Agenda
+|-- migrate_to_qdrant.py        <- Migration des données locales vers Qdrant Cloud
+|-- chainlit.py                 <- Script de configuration ou test local de Chainlit
 |
-`-- public/
-    `-- custom.css              <- Theme personnalise (couleurs, branding)
+|-- data/                       <- Données sources (embeddings, fichiers d’indexation)
+|-- .chainlit/
+|   `-- config.toml             <- Configuration Chainlit (UI, thème, fonctionnalités)
+|
+|-- public/                     <- Thème personnalisé (CSS, branding)
+|   `-- custom.css
+|
+|-- acr_config.json             <- Configuration Azure Container Registry
+|-- containerapp_config.json    <- Configuration Azure Container Apps
+|-- env_config.json             <- Variables d’environnement Azure
+
 ```
 
 ---
@@ -75,7 +86,7 @@ git clone https://github.com/Cheikhafef/MVP-Puls-Events.git
 cd MVP-Puls-Events
 ```
 
-### 2. Creer l'environnement virtuel <br>
+### 2. Créer l'environnement virtuel <br>
 
 ```bash
 python -m venv venv
@@ -87,15 +98,15 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-### 3. Installer les dependances <br>
+### 3. Installer les dépendances <br>
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configurer les cles API <br>
+### 4. Configurer les clés API <br>
 
-Creez un fichier `.env` a la racine :
+Créez un fichier `.env` à la racine :
 
 ```
 MISTRAL_API_KEY=**********************
@@ -108,6 +119,9 @@ DATABASE_URL=**********************
 MISTRAL_MODEL=open-mistral-7b
 MISTRAL_TEMPERATURE=0.1
 CHAINLIT_AUTH_SECRET=**********************
+PASS_DEMO_HASH=**********
+PASS_REMY_HASH=**********
+PASS_AFEF_HASH=**********
 ```
 
 ---
@@ -122,7 +136,7 @@ chainlit run chatbot_chainlit.py -w
 
 Ouvre sur [http://localhost:8000](http://localhost:8000)
 
-### Deploiement Azure Container Apps <br>
+### Déploiement Azure Container Apps <br>
 
 ```bash
 docker build --no-cache -t pulseventsregistry.azurecr.io/puls-events:latest .
@@ -142,29 +156,29 @@ flowchart TD
 
     subgraph RAG["Pipeline RAG hybride"]
         direction TB
-        QDRANT["Qdrant Cloud MMR k=15\nBase vectorielle managee"]
-        COND{">= 2 resultats ?"}
+        QDRANT["Qdrant Cloud MMR k=15\nBase vectorielle managée"]
+        COND{">= 2 résultats ?"}
         MISTRAL["Mistral-7B\nGeneration RAG"]
     end
 
     subgraph AGENT["Fallback smolagents"]
         direction TB
-        DDG["DuckDuckGo\nrecherche web temps reel"]
-        FORMAT["Mistral-7B\nFormatage resultats"]
+        DDG["DuckDuckGo\nrecherche web temps réel"]
+        FORMAT["Mistral-7B\nFormatage résultats"]
     end
 
-    subgraph SUPPORT["Systemes support"]
+    subgraph SUPPORT["Systèmes support"]
         direction LR
-        AUTH["Authentification\nemail + mot de passe"]
+        AUTH["Authentification\nusername + mot de passe"]
         MEM["Historique\nSupabase PostgreSQL"]
-        GEO["Geolocalisation\nIP + texte + manuel"]
+        GEO["Géolocalisation\nIP + texte + manuel"]
     end
 
     USR --> AUTH
     AUTH --> QDRANT
     QDRANT --> COND
-    COND -->|">= 2 resultats"| MISTRAL
-    COND -->|"< 2 resultats"| DDG
+    COND -->|">= 2 résultats"| MISTRAL
+    COND -->|"< 2 résultats"| DDG
     DDG --> FORMAT
     MISTRAL --> MEM
     FORMAT --> MEM
@@ -179,32 +193,34 @@ flowchart TD
 
 ## Stack technique <br>
 
-| Composant | Technologie | Detail |
+| Composant | Technologie | Détail |
 |---|---|---|
 | Langage | Python | 3.11-slim (container) |
 | Interface | Chainlit | v2.11.1 |
-| Base vectorielle | Qdrant Cloud | 1786 vecteurs, dim=384 |
+| Base vectorielle | Qdrant Cloud | 1786 vecteurs, dim=384 (Paris uniquement) |
 | Embedding | HuggingFace MiniLM-L6-v2 | Calcul dans le container |
 | LLM | Mistral AI API | open-mistral-7b |
 | Persistance | Supabase PostgreSQL | 5 tables, 500 MB free tier |
-| Recherche web | smolagents + DuckDuckGo | Fallback si < 2 resultats Qdrant |
-| Authentification | Chainlit Auth | Email + mot de passe |
-| Deploiement | Docker + Azure Container Apps | Auto-scaling 1-10 replicas, HTTPS natif |
-| Registry | Azure Container Registry | Stockage images Docker |
-| Theme UI | CSS custom | Branding Chainlit retire |
+| Recherche web | smolagents + DuckDuckGo | Fallback si < 2 résultats Qdrant |
+| Authentification | Chainlit Auth | username + mot de passe hashé (bcrypt) |
+| Déploiement | Docker + Azure Container Apps | Auto-scaling 1-10 replicas, HTTPS natif |
+| Registry | Azure Container Registry | pulseventsregistry2.azurecr.io |
+| Thème UI | CSS custom | Branding Chainlit retiré |
+| Tests | pytest | Unitaires (dates, fallback web) + 1 test d'intégration |
 
 ---
 
-## Resultats <br>
+## Résultats <br>
 
-| Metrique | Valeur |
+| Métrique | Valeur |
 |---|---|
-| Villes couvertes | 37 villes francaises |
-| Fenetre temporelle | 2025, 2026, 2027 |
-| Vecteurs Qdrant indexes | 1 786 |
-| Temps de reponse Qdrant | < 2s (temps moyen) |
-| Revisions deployees | 107 (v1 a v107) |
-| Filtres temporels | Mois + annee, saisons, demain, hier, ce week-end |
+| Villes couvertes | 37 villes françaises (Paris via Qdrant, autres via fallback web) |
+| Fenêtre temporelle | 2025, 2026, 2027 |
+| Vecteurs Qdrant indexés | 1 786 |
+| Temps de réponse Qdrant | < 2s (temps moyen) |
+| Temps de réponse fallback web | < 30s (objectif), 9-14s en moyenne mesurée |
+| Révisions déployées | 61 (v1 a v61) |
+| Filtres temporels | Mois + année, saisons, demain, hier, ce week-end |
 
 ---
 
@@ -212,37 +228,37 @@ flowchart TD
 
 | Expression | Exemple | Comportement |
 |---|---|---|
-| Mois + annee | "concerts en aout 2026" | Filtre strict : seulement aout 2026 |
-| Annee seule | "evenements 2027" | Toute l'annee 2027 |
-| Saisons | "cet ete", "cet hiver" | Plage saisonniere stricte |
-| Relatif | "demain", "hier", "ce week-end" | Date exacte calculee |
-| Jour precis | "le 29 juillet 2026" | Jour exact uniquement |
+| Mois + année | "concerts en août 2026" | Filtre strict : seulement août 2026 |
+| Année seule | "événements 2027" | Toute l'année 2027 |
+| Saisons | "cet été", "cet hiver" | Plage saisonniere stricte |
+| Relatif | "demain", "hier", "ce week-end" | Date exacte calculée |
+| Jour précis | "le 29 juillet 2026" | Jour exact uniquement |
 
 ---
 
-## Securite <br>
+## Sécurité <br>
 
-- Authentification email + mot de passe, sessions Chainlit
-- HTTPS natif (certificat SSL gere par Azure)
-- Secrets isoles via `.env`, jamais versionnes
-- Historique des conversations filtre par `user_id` (cle etrangere)
+- Authentification username + mot de passe, sessions Chainlit
+- HTTPS natif (certificat SSL géré par Azure)
+- Secrets isolés via `.env`, jamais versionnés
+- Historique des conversations filtré par `user_id` (clé étrangère)
 
-**A ameliorer :** <br>
+**A améliorer :** <br>
 - Migration des credentials vers Azure Key Vault
 - Mise en place d'un rate limiting
-- CI/CD automatise (actuellement deploiement manuel)
-- Formalisation de la politique de retention RGPD
+- CI/CD automatisé (actuellement déploiement manuel)
+- Formalisation de la politique de rétention RGPD
 
 ---
 
-## Prochaines etapes (nice-to-have) <br>
+## Prochaines étapes (nice-to-have) <br>
 
 - [ ] Application mobile React Native (GPS natif disponible)
 - [ ] Interface d'administration utilisateurs
-- [ ] Recommandations personnalisees basees sur l'historique
-- [ ] Filtres temporels relatifs avances ("semaine prochaine", "mois prochain")
+- [ ] Recommandations personnalisées basées sur l'historique
+- [ ] Filtres temporels relatifs avancés ("semaine prochaine", "mois prochain")
 - [ ] Enrichissement Qdrant multi-villes (actuellement Paris uniquement)
-- [ ] CI/CD automatise via GitHub Actions
+- [ ] CI/CD automatisé via GitHub Actions
 - [ ] Migration des secrets vers Azure Key Vault
 
 ---

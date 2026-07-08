@@ -21,7 +21,7 @@ from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 
 from agent_search import search_events_web
-
+import bcrypt
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -76,10 +76,10 @@ def get_data_layer():
 @cl.password_auth_callback
 def auth_callback(username: str, password: str):
     users = {
-        "demo":  "pulsevents2026",
-        "remy":  "encadreur2026",
-        "afef":  "afef2026",
-    }
+    "demo": bcrypt.hashpw(os.getenv("PASS_DEMO").encode(), bcrypt.gensalt()),
+    "remy": bcrypt.hashpw(os.getenv("PASS_REMY").encode(), bcrypt.gensalt()),
+    "afef": bcrypt.hashpw(os.getenv("PASS_AFEF").encode(), bcrypt.gensalt()),
+}
     if username in users and users[username] == password:
         return cl.User(identifier=username, metadata={"role": "user"})
     return None
